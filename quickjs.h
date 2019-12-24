@@ -770,6 +770,9 @@ typedef JSModuleDef *JSModuleLoaderFunc(JSContext *ctx,
 void JS_SetModuleLoaderFunc(JSRuntime *rt,
                             JSModuleNormalizeFunc *module_normalize,
                             JSModuleLoaderFunc *module_loader, void *opaque);
+JSModuleNormalizeFunc* JS_GetModuleNormalizeFunc(JSRuntime *rt);
+JSModuleLoaderFunc *JS_GetModuleLoaderFunc(JSRuntime *rt);
+
 /* return the import.meta object of a module */
 JSValue JS_GetImportMeta(JSContext *ctx, JSModuleDef *m);
 JSAtom JS_GetModuleName(JSContext *ctx, JSModuleDef *m);
