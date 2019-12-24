@@ -518,6 +518,69 @@ JSModuleDef *js_module_loader(JSContext *ctx,
     return m;
 }
 
+
+////////////////////////////////////////s
+
+
+static JSValue get_package_json(JSContext* ctx, const char* package_name)
+{
+    char filename[1024] = {};
+    snprintf(filename, 1024, "./node_modules/%s/package.json", package_name);
+    
+    uint8_t *buf;
+    size_t buf_len;
+
+    buf = js_load_file(ctx, &buf_len, filename);
+    if (!buf) {
+        perror(filename);
+        return JS_NULL;
+    }
+
+    JSValue val = JS_ParseJSON(ctx, (char*)buf, buf_len, filename);
+    js_free(ctx, buf);
+
+    return val;
+}
+
+JSModuleDef *nodejs_module_loader(JSContext *ctx,
+                              const char *module_name, void *opaque)
+{
+    JSModuleDef* m = 0;
+    // HACK: Use opaque for the original loader
+    if (opaque) {
+        m = ((JSModuleLoaderFunc*)opaque)(ctx, module_name, opaque);
+    } else {
+        m = js_module_loader(ctx, module_name, opaque);
+    }
+
+    if (m) {
+        //printf("nodejs_module_loader(%s) -> using jsc_module_loader\n", module_name);
+        return m;
+    }
+
+    JSValue json = get_package_json(ctx, module_name);
+
+    // check if json is a real object...
+    JSValue modulePath = JS_GetPropertyStr(ctx, json, "module");
+    JS_FreeValue(ctx, json);
+
+    if (JS_IsString(modulePath)) {
+        char filename[1024];
+        const char* c_path = JS_ToCString(ctx, modulePath);
+        snprintf(filename, 1024, "./node_modules/%s/%s", module_name, c_path);
+        JS_FreeCString(ctx, c_path);
+
+        //printf("nodejs_module_loader: %p %s -> %s\n", ctx, module_name, filename);
+        return nodejs_module_loader(ctx, filename, opaque);
+    }
+
+    puts("ERROR");
+    return NULL;
+}
+
+///////////////////////////////////s
+
+
 static JSValue js_std_exit(JSContext *ctx, JSValueConst this_val,
                            int argc, JSValueConst *argv)
 {

@@ -46,4 +46,7 @@ void js_std_promise_rejection_tracker(JSContext *ctx, JSValueConst promise,
                                       JSValueConst reason,
                                       JS_BOOL is_handled, void *opaque);
 
+JSModuleDef *nodejs_module_loader(JSContext *ctx,
+                              const char *module_name, void *opaque);
+
 #endif /* QUICKJS_LIBC_H */
