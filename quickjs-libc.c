@@ -545,37 +545,77 @@ static JSValue get_package_json(JSContext* ctx, const char* package_name)
 JSModuleDef *nodejs_module_loader(JSContext *ctx,
                               const char *module_name, void *opaque)
 {
-    JSModuleDef* m = 0;
-    // HACK: Use opaque for the original loader
-    if (opaque) {
-        m = ((JSModuleLoaderFunc*)opaque)(ctx, module_name, opaque);
-    } else {
-        m = js_module_loader(ctx, module_name, opaque);
+    puts("NODEJS MODULE LOADER:");
+        puts(module_name);
+
+
+    struct stat statbuf;
+    if (module_name[0] == '/' || module_name[0] == '.' || 
+        strcmp(module_name, "std") == 0 || strcmp(module_name, "os") == 0 ||
+        stat(module_name, &statbuf) >= 0) {
+        
+        JSModuleDef* m = 0;
+        // HACK: Use opaque for the original loader
+        if (opaque) {
+            m = ((JSModuleLoaderFunc*)opaque)(ctx, module_name, opaque);
+        } else {
+            m = js_module_loader(ctx, module_name, opaque);
+        }
+
+        if (m) {
+            printf("nodejs_module_loader(%s) -> using jsc_module_loader\n", module_name);
+            return m;
+        }
+
+        puts("NATIVE LOADER FAILED TO LOAD:");
+        return 0;
     }
 
-    if (m) {
-        //printf("nodejs_module_loader(%s) -> using jsc_module_loader\n", module_name);
-        return m;
-    }
+    puts("NOT A QUALIFIED NAME, LOOKING FOR package.json...");
 
     JSValue json = get_package_json(ctx, module_name);
 
-    // check if json is a real object...
-    JSValue modulePath = JS_GetPropertyStr(ctx, json, "module");
-    JS_FreeValue(ctx, json);
-
-    if (JS_IsString(modulePath)) {
-        char filename[1024];
-        const char* c_path = JS_ToCString(ctx, modulePath);
-        snprintf(filename, 1024, "./node_modules/%s/%s", module_name, c_path);
-        JS_FreeCString(ctx, c_path);
-
-        //printf("nodejs_module_loader: %p %s -> %s\n", ctx, module_name, filename);
-        return nodejs_module_loader(ctx, filename, opaque);
+    if (! JS_IsObject(json)){
+        JS_ThrowReferenceError(ctx, "Could not load package.json for %s\n", module_name);
+        return 0;
     }
 
-    puts("ERROR");
-    return NULL;
+    JSValue modulePath = JS_GetPropertyStr(ctx, json, "module");
+    
+    if (!JS_IsString(modulePath)) {
+        //JS_ThrowReferenceError(ctx, "package.json contains no valid module\n");
+
+        puts("No Valid Module. Trying to load as CommonJS value");
+
+        JS_FreeValue(ctx, modulePath);
+        modulePath = JS_GetPropertyStr(ctx, json, "main");
+
+        if (JS_IsUndefined(modulePath)) {
+            JS_FreeValue(ctx, modulePath);
+            modulePath = JS_NewString(ctx, "./index.js");
+            puts("Can't find entry point in package.json, defaulting to index.js");
+        }
+
+    }
+
+    JS_FreeValue(ctx, json);
+
+    char filename[1024];
+    const char* c_path = JS_ToCString(ctx, modulePath);
+
+    if (0 == strcmp(c_path, "index")) {
+        JS_FreeCString(ctx, c_path);
+        JS_FreeValue(ctx, modulePath);
+        modulePath = JS_NewString(ctx, "index.js");
+        c_path = JS_ToCString(ctx, modulePath);
+    }
+    JS_FreeValue(ctx, modulePath);
+
+    snprintf(filename, 1024, "./node_modules/%s/%s", module_name, c_path);
+    JS_FreeCString(ctx, c_path);
+
+    printf("nodejs_module_loader: %p %s -> %s\n", ctx, module_name, filename);
+    return nodejs_module_loader(ctx, filename, opaque);
 }
 
 ///////////////////////////////////s
